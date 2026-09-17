@@ -374,6 +374,82 @@ img{max-width:100%}
     } else { out.textContent = "copie impossible"; }
   });
 
+  var ADMIN = location.hash.toLowerCase().indexOf("admin") >= 0;
+
+  function telecharger() {
+    var clone = document.documentElement.cloneNode(true);
+    var d = clone.querySelector("#memes-data");
+    if (d) d.textContent = JSON.stringify(state);
+    var g = clone.querySelector("#grid");
+    if (g) g.innerHTML = "";
+    var ban = clone.querySelector("#adminbar");
+    if (ban) ban.parentNode.removeChild(ban);
+    var c = clone.querySelector("#count"); if (c) c.innerHTML = "&mdash;";
+    var s = clone.querySelector("#seen"); if (s) s.innerHTML = "&mdash;";
+    var dg = clone.querySelector("#suggestDialog"); if (dg) dg.removeAttribute("open");
+    var nl = String.fromCharCode(10);
+    var src = "<!doctype html>" + nl + "<html lang=" + JSON.stringify("fr") + ">" + clone.innerHTML + "</html>" + nl;
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([src], { type: "text/html" }));
+    a.download = "index.html";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.parentNode.removeChild(a); }, 4000);
+  }
+
+  function bandeau() {
+    var b = document.createElement("div");
+    b.id = "adminbar";
+    b.className = "empty";
+    b.style.textAlign = "left";
+    b.style.marginTop = "20px";
+    var p = document.createElement("p");
+    p.style.margin = "0 0 12px";
+    p.innerHTML = "<b>Mode admin.</b> Retire ce que tu veux avec la croix sur chaque fiche, puis telecharge la page a jour et depose-la sur GitHub. Rien ne change en ligne tant que tu ne fais pas ce depot.";
+    var bouton = document.createElement("button");
+    bouton.className = "btn";
+    bouton.type = "button";
+    bouton.textContent = "Telecharger la page a jour";
+    bouton.onclick = telecharger;
+    b.appendChild(p);
+    b.appendChild(bouton);
+    grid.parentNode.insertBefore(b, grid);
+  }
+
+  function decorer() {
+    var cartes = grid.querySelectorAll("article.card");
+    var list = state.memes.slice().reverse();
+    for (var i = 0; i < cartes.length; i++) {
+      (function (carte, m) {
+        if (!m) return;
+        var x = document.createElement("button");
+        x.className = "kill";
+        x.type = "button";
+        x.textContent = "X";
+        x.setAttribute("aria-label", "Retirer cette fiche");
+        var arme = false;
+        x.onclick = function () {
+          if (!arme) {
+            arme = true; x.textContent = "retirer ?";
+            setTimeout(function () { arme = false; x.textContent = "X"; }, 3000);
+            return;
+          }
+          state.memes = state.memes.filter(function (y) { return y.id !== m.id; });
+          render();
+        };
+        carte.appendChild(x);
+      })(cartes[i], list[i]);
+    }
+  }
+
+  var _render = render;
+  render = function () { _render(); if (ADMIN) decorer(); };
+  if (ADMIN) bandeau();
+
+  window.onhashchange = function () {
+    if ((location.hash.toLowerCase().indexOf("admin") >= 0) !== ADMIN) location.reload();
+  };
+
   render();
 })();
 </script>
