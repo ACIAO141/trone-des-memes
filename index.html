@@ -251,9 +251,12 @@ img{max-width:100%}
 <dialog id="suggestDialog">
   <div class="dlg">
     <h3>Envoie-le à Maxime</h3>
-    <p class="lead">Colle ton lien Instagram : la page prépare un message prêt à lui envoyer, il l&#39;accrochera au mur.</p>
+    <p class="lead">Colle ton lien et dis en deux mots ce que c&#39;est : la page prépare un message prêt à envoyer à Maxime, qui l&#39;accrochera au mur.</p>
     <label for="s-url"><span>Ton lien Instagram</span>
       <input id="s-url" type="url" inputmode="url" placeholder="https://www.instagram.com/reel/...">
+    </label>
+    <label for="s-desc"><span>En deux mots, c&#39;est quoi ?</span>
+      <input id="s-desc" type="text" maxlength="90" placeholder="Le chat qui rate son saut">
     </label>
     <label for="s-by"><span>Ton prénom / pseudo</span>
       <input id="s-by" type="text" maxlength="24" placeholder="Clémence">
@@ -332,18 +335,21 @@ img{max-width:100%}
       var on = vus.indexOf(m.id) >= 0;
       var card = document.createElement("article");
       card.className = "card";
+      var desc = (m.note || "").trim();
       card.innerHTML =
-        "<h2>" + esc(label(m)) + "</h2>" +
-        (m.note ? "<p class=" + JSON.stringify("note") + ">" + esc(m.note) + "</p>" : "") +
+        "<h2>" + esc(desc || label(m)) + "</h2>" +
         "<a class=" + JSON.stringify("go") + " href=" + JSON.stringify(m.url) +
           " target=" + JSON.stringify("_blank") + " rel=" + JSON.stringify("noopener noreferrer") +
           ">Ouvrir sur Instagram &rarr;</a>" +
         "<div class=" + JSON.stringify("meta") + "><span class=" + JSON.stringify("by") + ">" +
           esc(m.by || "anonyme") + "</span>" +
+        (desc ? "<span>" + esc(label(m)) + "</span>" : "") +
         (m.ts ? "<span>" + esc(frDate(m.ts)) + "</span>" : "") +
         "<button class=" + JSON.stringify("laugh" + (on ? " on" : "")) +
           " type=" + JSON.stringify("button") + " aria-pressed=" + JSON.stringify(String(on)) +
           ">&#128514; <span>" + (on ? "vu" : "deja vu ?") + "</span></button></div>";
+
+      if (!desc) card.querySelector("h2").style.opacity = "0.62";
 
       card.querySelector(".laugh").addEventListener("click", function () {
         var v = lus(), i = v.indexOf(m.id);
@@ -365,7 +371,8 @@ img{max-width:100%}
     var by = document.getElementById("s-by").value.trim() || "un ami";
     var out = document.getElementById("s-copied");
     if (!url) { out.textContent = "colle un lien Instagram"; return; }
-    var msg = "Pour Le Trone des Memes - de " + by + " : " + url;
+    var d = document.getElementById("s-desc").value.trim();
+    var msg = "Pour Le Trone des Memes - de " + by + (d ? " - " + d : "") + " : " + url;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(msg).then(
         function () { out.textContent = "copie !"; },
@@ -438,6 +445,32 @@ img{max-width:100%}
           render();
         };
         carte.appendChild(x);
+
+        var h = carte.querySelector("h2");
+        var e = document.createElement("button");
+        e.className = "laugh";
+        e.type = "button";
+        e.style.marginLeft = "0";
+        e.textContent = (m.note || "").trim() ? "corriger" : "decrire";
+        e.onclick = function () {
+          if (!(m.note || "").trim()) h.textContent = "";
+          h.style.opacity = "1";
+          h.contentEditable = "true";
+          h.style.outline = "2px solid var(--accent)";
+          h.style.outlineOffset = "3px";
+          h.focus();
+        };
+        h.onblur = function () {
+          if (h.contentEditable !== "true") return;
+          h.contentEditable = "false";
+          m.note = h.textContent.trim();
+          render();
+        };
+        h.onkeydown = function (ev) {
+          if (ev.key === "Enter") { ev.preventDefault(); h.blur(); }
+        };
+        var meta = carte.querySelector(".meta");
+        meta.insertBefore(e, meta.firstChild);
       })(cartes[i], list[i]);
     }
   }
