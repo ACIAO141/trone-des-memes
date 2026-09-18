@@ -1,0 +1,34 @@
+name: Garder la base eveillee
+
+# Supabase met un projet gratuit en pause apres 7 jours de faible activite.
+# Ce reveil quotidien lui envoie une requete de lecture, ce qui suffit.
+# Le fichier .keepalive change une fois par mois : ce commit mensuel empeche
+# GitHub de desactiver la planification, ce qu il fait apres 60 jours sans activite.
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reveil:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Interroger la base
+        run: curl -sSf -H "apikey: sb_publishable_2VIFmudC12XIWTTCSJuAzQ_wSIMWFlz" -H "Authorization: Bearer sb_publishable_2VIFmudC12XIWTTCSJuAzQ_wSIMWFlz" "https://nvnaffvmrpsvvjevzwyk.supabase.co/rest/v1/memes?select=id&limit=1"
+
+      - name: Marquer le mois courant
+        run: |
+          date -u +%Y-%m > .keepalive
+          if ! git diff --quiet; then
+            git config user.name "reveil automatique"
+            git config user.email "actions@users.noreply.github.com"
+            git add .keepalive
+            git commit -m "reveil : $(date -u +%Y-%m)"
+            git push
+          fi
