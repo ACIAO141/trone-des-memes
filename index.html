@@ -244,26 +244,26 @@ img{max-width:100%}
 </div>
 
 <div class="bar">
-  <button class="btn" id="openSuggest" type="button">Proposer un mème</button>
+  <button class="btn" id="openAdd" type="button">Ajouter un mème</button>
 </div>
 
-<dialog id="suggestDialog">
+<dialog id="addDialog">
   <div class="dlg">
-    <h3>Envoie-le à Maxime</h3>
-    <p class="lead">Colle ton lien et dis en deux mots ce que c'est : la page prépare un message prêt à envoyer à Maxime, qui l'accrochera au mur.</p>
-    <label for="s-url"><span>Ton lien Instagram</span>
-      <input id="s-url" type="url" inputmode="url" placeholder="https://www.instagram.com/reel/...">
+    <h3>Accroche ton mème</h3>
+    <p class="lead">Colle le lien du reel et dis en deux mots ce que c&#39;est. Il apparaît sur le mur pour tout le monde, tout de suite.</p>
+    <label for="f-url"><span>Lien Instagram</span>
+      <input id="f-url" type="url" inputmode="url" placeholder="https://www.instagram.com/reel/...">
     </label>
-    <label for="s-desc"><span>En deux mots, c'est quoi ?</span>
-      <input id="s-desc" type="text" maxlength="90" placeholder="Le chat qui rate son saut">
+    <label for="f-desc"><span>En deux mots, c&#39;est quoi ?</span>
+      <input id="f-desc" type="text" maxlength="90" placeholder="Le chat qui rate son saut">
     </label>
-    <label for="s-by"><span>Ton prénom / pseudo</span>
-      <input id="s-by" type="text" maxlength="24" placeholder="Clémence">
+    <label for="f-by"><span>Ton prénom / pseudo</span>
+      <input id="f-by" type="text" maxlength="24" placeholder="Clémence">
     </label>
+    <p class="err" id="f-err"></p>
     <div class="dlg-actions">
-      <span class="copied" id="s-copied"></span>
-      <button class="btn ghost" type="button" id="closeSuggest">Fermer</button>
-      <button class="btn" type="button" id="doCopy">Copier le message</button>
+      <button class="btn ghost" type="button" id="cancelAdd">Annuler</button>
+      <button class="btn" type="button" id="submitAdd">Accrocher au mur</button>
     </div>
   </div>
 </dialog>
@@ -271,24 +271,26 @@ img{max-width:100%}
 <script>
 (function () {
   "use strict";
-  var state;
-  try { state = JSON.parse(document.getElementById("memes-data").textContent); }
-  catch (e) { state = { memes: [] }; }
-  if (!state || !Array.isArray(state.memes)) state = { memes: [] };
+
+  var SB_URL = "https://nvnaffvmrpsvvjevzwyk.supabase.co/rest/v1/memes";
+  var SB_CLE = "sb_publishable_2VIFmudC12XIWTTCSJuAzQ_wSIMWFlz";
+  var ENTETES = { apikey: SB_CLE, Authorization: "Bearer " + SB_CLE, "Content-Type": "application/json" };
 
   var grid = document.getElementById("grid");
   var countEl = document.getElementById("count");
   var seenEl = document.getElementById("seen");
-  var dlg = document.getElementById("suggestDialog");
+  var dlg = document.getElementById("addDialog");
+  var etatEl = document.createElement("span");
+  etatEl.className = "stat";
+  etatEl.hidden = true;
+  document.querySelector(".stats").appendChild(etatEl);
+
+  var memes = [];
   var KEY = "trone-vus";
 
-  function lus() {
-    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; }
-  }
-  function ecrire(v) {
-    try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {}
-  }
-  var MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", QUOT: "&quot;", APOS: "&#39;" };
+  function lus() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
+  function noter(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} }
+
   function esc(s) {
     s = String(s == null ? "" : s);
     var out = "";
@@ -303,188 +305,145 @@ img{max-width:100%}
     }
     return out;
   }
+
   function frDate(iso) {
     var d = new Date(iso);
     return isNaN(d) ? "" : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
   }
-  function label(m) {
-    if (m.handle) return "@" + m.handle;
+
+  function compteDepuisUrl(u) {
     try {
-      var parts = new URL(m.url).pathname.split("/").filter(Boolean);
+      var parts = new URL(u).pathname.split("/").filter(Boolean);
       var kinds = ["reel", "reels", "p", "tv"];
       for (var i = 0; i < parts.length; i++) {
-        if (kinds.indexOf(parts[i].toLowerCase()) >= 0) {
-          return i > 0 ? "@" + parts[0] : (parts[i + 1] || "Instagram");
-        }
+        if (kinds.indexOf(parts[i].toLowerCase()) >= 0) return i > 0 ? parts[0] : "";
       }
-      return parts.length ? "@" + parts[0] : "Instagram";
-    } catch (e) { return "Instagram"; }
+      return parts.length ? parts[0] : "";
+    } catch (e) { return ""; }
   }
 
-  function render() {
+  function instantane() {
+    try {
+      var d = JSON.parse(document.getElementById("memes-data").textContent).memes || [];
+      return d.map(function (m) {
+        return { id: m.id, url: m.url, description: (m.note || "").trim(),
+                 auteur: m.by || "Maxime", compte: m.handle || compteDepuisUrl(m.url), date: m.ts };
+      }).reverse();
+    } catch (e) { return []; }
+  }
+
+  function depuisBase(rows) {
+    return rows.map(function (r) {
+      return { id: r.id, url: r.url, description: (r.description || "").trim(),
+               auteur: r.auteur || "anonyme", compte: r.compte || compteDepuisUrl(r.url),
+               date: (r.cree_le || "").slice(0, 10) };
+    });
+  }
+
+  function rendre() {
     var vus = lus();
-    var list = state.memes.slice().reverse();
-    countEl.textContent = list.length + (list.length > 1 ? " memes" : " meme");
+    countEl.textContent = memes.length + (memes.length > 1 ? " mèmes" : " mème");
     var n = 0;
-    list.forEach(function (m) { if (vus.indexOf(m.id) >= 0) n++; });
-    seenEl.textContent = n ? n + " deja vus par toi" : "aucun vu pour l" + String.fromCharCode(39) + "instant";
+    memes.forEach(function (m) { if (vus.indexOf(m.id) >= 0) n++; });
+    seenEl.textContent = n ? n + " déjà vus par toi" : "aucun vu pour l" + String.fromCharCode(39) + "instant";
 
     grid.textContent = "";
-    list.forEach(function (m) {
+    if (!memes.length) {
+      var vide = document.createElement("div");
+      vide.className = "empty";
+      vide.textContent = "Le mur est vide. Sois le premier à accrocher quelque chose.";
+      grid.appendChild(vide);
+      return;
+    }
+
+    memes.forEach(function (m) {
       var on = vus.indexOf(m.id) >= 0;
+      var titre = m.description || (m.compte ? "@" + m.compte : "Un mème");
       var card = document.createElement("article");
       card.className = "card";
-      var desc = (m.note || "").trim();
       card.innerHTML =
-        "<h2>" + esc(desc || label(m)) + "</h2>" +
+        "<h2>" + esc(titre) + "</h2>" +
         "<a class=" + JSON.stringify("go") + " href=" + JSON.stringify(m.url) +
           " target=" + JSON.stringify("_blank") + " rel=" + JSON.stringify("noopener noreferrer") +
           ">Ouvrir sur Instagram &rarr;</a>" +
         "<div class=" + JSON.stringify("meta") + "><span class=" + JSON.stringify("by") + ">" +
-          esc(m.by || "anonyme") + "</span>" +
-        (desc ? "<span>" + esc(label(m)) + "</span>" : "") +
-        (m.ts ? "<span>" + esc(frDate(m.ts)) + "</span>" : "") +
-        "<button class=" + JSON.stringify("laugh" + (on ? " on" : "")) +
-          " type=" + JSON.stringify("button") + " aria-pressed=" + JSON.stringify(String(on)) +
-          ">&#128514; <span>" + (on ? "vu" : "deja vu ?") + "</span></button></div>";
+          esc(m.auteur) + "</span>" +
+        (m.description && m.compte ? "<span>@" + esc(m.compte) + "</span>" : "") +
+        (m.date ? "<span>" + esc(frDate(m.date)) + "</span>" : "") +
+        "<button class=" + JSON.stringify("laugh" + (on ? " on" : "")) + " type=" + JSON.stringify("button") +
+          ">&#128514; <span>" + (on ? "vu" : "déjà vu ?") + "</span></button></div>";
 
-      if (!desc) card.querySelector("h2").style.opacity = "0.62";
+      if (!m.description) card.querySelector("h2").style.opacity = "0.62";
 
       card.querySelector(".laugh").addEventListener("click", function () {
         var v = lus(), i = v.indexOf(m.id);
         if (i >= 0) v.splice(i, 1); else v.push(m.id);
-        ecrire(v); render();
+        noter(v); rendre();
       });
       grid.appendChild(card);
     });
   }
 
-  document.getElementById("openSuggest").addEventListener("click", function () {
-    document.getElementById("s-copied").textContent = "";
-    dlg.showModal();
-    document.getElementById("s-url").focus();
-  });
-  document.getElementById("closeSuggest").addEventListener("click", function () { dlg.close(); });
-  document.getElementById("doCopy").addEventListener("click", function () {
-    var url = document.getElementById("s-url").value.trim();
-    var by = document.getElementById("s-by").value.trim() || "un ami";
-    var out = document.getElementById("s-copied");
-    if (!url) { out.textContent = "colle un lien Instagram"; return; }
-    var d = document.getElementById("s-desc").value.trim();
-    var msg = "Pour Le Trone des Memes - de " + by + (d ? " - " + d : "") + " : " + url;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(msg).then(
-        function () { out.textContent = "copie !"; },
-        function () { out.textContent = "copie impossible"; }
-      );
-    } else { out.textContent = "copie impossible"; }
-  });
-
-  var ADMIN = location.hash.toLowerCase().indexOf("admin") >= 0;
-
-  function telecharger() {
-    var clone = document.documentElement.cloneNode(true);
-    var d = clone.querySelector("#memes-data");
-    if (d) d.textContent = JSON.stringify(state);
-    var g = clone.querySelector("#grid");
-    if (g) g.innerHTML = "";
-    var ban = clone.querySelector("#adminbar");
-    if (ban) ban.parentNode.removeChild(ban);
-    var c = clone.querySelector("#count"); if (c) c.innerHTML = "&mdash;";
-    var s = clone.querySelector("#seen"); if (s) s.innerHTML = "&mdash;";
-    var dg = clone.querySelector("#suggestDialog"); if (dg) dg.removeAttribute("open");
-    var nl = String.fromCharCode(10);
-    var src = "<!doctype html>" + nl + "<html lang=" + JSON.stringify("fr") + ">" + clone.innerHTML + "</html>" + nl;
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([src], { type: "text/html" }));
-    a.download = "index.html";
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.parentNode.removeChild(a); }, 4000);
+  function charger() {
+    return fetch(SB_URL + "?select=*&order=cree_le.desc", { headers: ENTETES, cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (rows) {
+        memes = depuisBase(rows);
+        etatEl.hidden = true;
+        rendre();
+      })
+      .catch(function () {
+        etatEl.textContent = "liste de secours";
+        etatEl.hidden = false;
+      });
   }
 
-  function bandeau() {
-    var b = document.createElement("div");
-    b.id = "adminbar";
-    b.className = "empty";
-    b.style.textAlign = "left";
-    b.style.marginTop = "20px";
-    var p = document.createElement("p");
-    p.style.margin = "0 0 12px";
-    p.innerHTML = "<b>Mode admin.</b> Retire ce que tu veux avec la croix sur chaque fiche, puis telecharge la page a jour et depose-la sur GitHub. Rien ne change en ligne tant que tu ne fais pas ce depot.";
-    var bouton = document.createElement("button");
-    bouton.className = "btn";
-    bouton.type = "button";
-    bouton.textContent = "Telecharger la page a jour";
-    bouton.onclick = telecharger;
-    b.appendChild(p);
-    b.appendChild(bouton);
-    grid.parentNode.insertBefore(b, grid);
-  }
+  function ajouter() {
+    var url = document.getElementById("f-url").value.trim();
+    var desc = document.getElementById("f-desc").value.trim();
+    var by = document.getElementById("f-by").value.trim();
+    var err = document.getElementById("f-err");
+    var bouton = document.getElementById("submitAdd");
+    err.textContent = "";
 
-  function decorer() {
-    var cartes = grid.querySelectorAll("article.card");
-    var list = state.memes.slice().reverse();
-    for (var i = 0; i < cartes.length; i++) {
-      (function (carte, m) {
-        if (!m) return;
-        var x = document.createElement("button");
-        x.className = "kill";
-        x.type = "button";
-        x.textContent = "X";
-        x.setAttribute("aria-label", "Retirer cette fiche");
-        var arme = false;
-        x.onclick = function () {
-          if (!arme) {
-            arme = true; x.textContent = "retirer ?";
-            setTimeout(function () { arme = false; x.textContent = "X"; }, 3000);
-            return;
-          }
-          state.memes = state.memes.filter(function (y) { return y.id !== m.id; });
-          render();
-        };
-        carte.appendChild(x);
-
-        var h = carte.querySelector("h2");
-        var e = document.createElement("button");
-        e.className = "laugh";
-        e.type = "button";
-        e.style.marginLeft = "0";
-        e.textContent = (m.note || "").trim() ? "corriger" : "decrire";
-        e.onclick = function () {
-          if (!(m.note || "").trim()) h.textContent = "";
-          h.style.opacity = "1";
-          h.contentEditable = "true";
-          h.style.outline = "2px solid var(--accent)";
-          h.style.outlineOffset = "3px";
-          h.focus();
-        };
-        h.onblur = function () {
-          if (h.contentEditable !== "true") return;
-          h.contentEditable = "false";
-          m.note = h.textContent.trim();
-          render();
-        };
-        h.onkeydown = function (ev) {
-          if (ev.key === "Enter") { ev.preventDefault(); h.blur(); }
-        };
-        var meta = carte.querySelector(".meta");
-        meta.insertBefore(e, meta.firstChild);
-      })(cartes[i], list[i]);
+    if (url.indexOf("https://www.instagram.com/") !== 0 && url.indexOf("https://instagram.com/") !== 0) {
+      err.textContent = "Ce lien ne vient pas d" + String.fromCharCode(39) + "Instagram. Copie-le depuis Partager, puis Copier le lien.";
+      return;
     }
+    if (!desc) { err.textContent = "Dis en deux mots ce que c" + String.fromCharCode(39) + "est : sans ça, personne ne cliquera."; return; }
+
+    bouton.disabled = true;
+    bouton.textContent = "Envoi...";
+    fetch(SB_URL, {
+      method: "POST",
+      headers: { apikey: SB_CLE, Authorization: "Bearer " + SB_CLE, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ url: url, description: desc, auteur: by || "anonyme", compte: compteDepuisUrl(url) })
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      document.getElementById("f-url").value = "";
+      document.getElementById("f-desc").value = "";
+      dlg.close();
+      return charger();
+    }).catch(function () {
+      err.textContent = "Envoi impossible. Réessaie dans un instant.";
+    }).then(function () {
+      bouton.disabled = false;
+      bouton.textContent = "Accrocher au mur";
+    });
   }
 
-  var _render = render;
-  render = function () { _render(); if (ADMIN) decorer(); };
-  if (ADMIN) bandeau();
+  document.getElementById("openAdd").addEventListener("click", function () {
+    document.getElementById("f-err").textContent = "";
+    dlg.showModal();
+    document.getElementById("f-url").focus();
+  });
+  document.getElementById("cancelAdd").addEventListener("click", function () { dlg.close(); });
+  document.getElementById("submitAdd").addEventListener("click", ajouter);
 
-  window.onhashchange = function () {
-    if ((location.hash.toLowerCase().indexOf("admin") >= 0) !== ADMIN) location.reload();
-  };
-
-  render();
+  memes = instantane();
+  rendre();
+  charger();
 })();
 </script>
-
-
-</body></html>
+</body>
+</html>
