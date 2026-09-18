@@ -26,10 +26,10 @@ jobs:
       - name: Marquer le mois courant
         run: |
           date -u +%Y-%m > .keepalive
-          if ! git diff --quiet; then
+          git add .keepalive
+          if ! git diff --cached --quiet; then
             git config user.name "reveil automatique"
             git config user.email "actions@users.noreply.github.com"
-            git add .keepalive
             git commit -m "reveil : $(date -u +%Y-%m)"
             git push
           fi
